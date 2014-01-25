@@ -1,0 +1,6 @@
+* Make a maze
+  - restrain the player movement
+* The vision is limited to a section of the maze
+* Make ghosts
+* Create a sheep
+  - it jumps
