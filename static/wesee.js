@@ -1,3 +1,6 @@
+/*jshint -W099*/
+/* global _*/
+
 var canvas = document.getElementById('canvas');
 var width = canvas.width;
 var height = canvas.height;
@@ -20,7 +23,125 @@ window.requestAnimFrame = (function(){
 	};
 })();
 
+var bindHandler = (function(){
+    var FunctionGroup = function(){
+	this.clear();
+    };
+    FunctionGroup.prototype.clear = function(){
+	var oldSet = {
+	    functions: this.functions,
+	    flipped: this.flipped
+	};
+	this.functions = {'down': [],
+			  'up': [],
+			  'move': []};
+	this.flipped = {'down': [],
+			'up': [],
+			'move': []};
+	return oldSet;
+    };
+    FunctionGroup.prototype.reset = function(oldSet){
+	this.functions = oldSet.functions;
+	this.flipped = oldSet.flipped;
+    };
+    FunctionGroup.prototype.run = function(key, e){
+	var anyTrue = false;
+	for (var i = 0; i < this.functions[key].length; i++){
+	    if (this.functions[key][i](e)){
+		anyTrue = true;
+	    }
+	}
+	return anyTrue;
+    };
+    FunctionGroup.prototype.flip = function(functionDict){
+	if (functionDict === undefined){
+	    this.functions = this.flipped;
+	}
+	else{
+	    this.flipped = this.functions;
+	    this.functions = functionDict;
+	}
+    };
+    FunctionGroup.prototype.addFunction = function(func, event){
+	this.functions[event].push(func);
+	var that = this;
+	return function(){
+	    for (var i = 0; i < that.functions[event].length; i++){
+		if (that.functions[event][i] === func){
+		    that.functions[event].splice(i, 1);
+		    return;
+		}
+	    }
+	};
+    };
 
+    var alwaysFunctions = new FunctionGroup();
+    var ifNothingFunctions = new FunctionGroup();
+
+    var functionGroups = [alwaysFunctions, ifNothingFunctions];
+    
+    var getBindFunction = function(key){
+	return function(e){
+	    e.preventDefault();
+	    var runNothingFunctions = !alwaysFunctions.run(key, e);
+	    if (runNothingFunctions){
+		ifNothingFunctions.run(key, e);
+	    }
+	};
+    };
+
+    canvas.addEventListener('mousedown', getBindFunction('down'), false);
+    canvas.addEventListener('mouseup', getBindFunction('up'), false);
+    canvas.addEventListener('mousemove', getBindFunction('move'), false);
+    canvas.addEventListener('touchstart', getBindFunction('down'), false);
+    canvas.addEventListener('touchend', getBindFunction('up'), false);
+    canvas.addEventListener('touchmove', getBindFunction('move'), false);
+
+    return {
+	flip: function(functionDicts){
+	    for (var i = 0; i < functionGroups.length; i++){
+		if (functionDicts === undefined){
+		    functionGroups[i].flip();
+		}
+		else{
+		    if (functionDicts[i] === undefined){
+			console.log('Warning: undefined function flip');
+		    }
+		    functionGroups[i].flip(functionDicts[i]);
+		}
+	    }
+	},
+	bindFunction: function(func, event, group){
+	    if (!event){
+		event = 'down';
+	    }
+
+	    if (group === undefined || group == 'always'){
+		return alwaysFunctions.addFunction(func, event);
+	    }
+	    else if (group == 'ifnothing'){
+		return ifNothingFunctions.addFunction(func, event);
+	    }
+	    else{
+		console.log('Warning: wrong bind group' + func);
+	    }
+	},
+	clear: function(){
+	    var oldSets = [];
+	    for (var i = 0; i < functionGroups.length; i++){
+		oldSets.push(functionGroups[i].clear());
+	    }
+	    return oldSets;
+	},
+	reset: function(oldSets){
+	    /*Resets the bindings to those passed,
+	      Meant to be used with the result of a clear*/
+	    for (var i = 0; i < oldSets.length; i++){
+		functionGroups[i].reset(oldSets[i]);
+	    }
+	}
+    };
+})();
 
 var timeFeed = (function(){
     var lastTime = new Date();
@@ -62,24 +183,125 @@ var timeFeed = (function(){
            };
 })();
 
-var App = function(){
+var containsRect = function(outer, inner){
+    return outer[0] < inner[0] &&
+        outer[1] < inner[1] &&
+        outer[0] + outer[2] > inner[0] + inner [2] &&
+        outer[1] + outer[3] > innter[1] + inner[3];
 };
 
-App.prototype.initialize = function(){
+var collideRect = function(rct1, rct2){
+    return (max(rct1[0], rct2[0]) < min(rct1[0] + rct1[2], rct2[0] + rct2[2]) &&
+	    max(rct1[1], rct2[1]) < min(rct1[1] + rct1[3], rct2[1] + rct2[3]));
 };
 
-App.prototype.draw = function(){
+var Tile = function(){
+    this.rect = [0, 0, 0, 0];
+};
+
+Tile.prototype.allows = function(direction){
+    return true;
+};
+
+Tile.prototype.getNeighbor = function(direction){
+    return this;
+};
+
+var Player = function(startTile){
+    this.pos = [50, 50];
+    this.direction = [1, 0];
+    this.size = [16, 16];
+    this.currentTile = startTile;
+};
+
+Player.prototype.speed = 60;
+
+Player.prototype.draw = function(framePos){
+    ctx.fillStyle = '#000000';
+    ctx.fillText('P', this.pos[0] - framePos[0], this.pos[1] - framePos[1]);
+};
+
+Player.prototype.update = function(interval){
+    var that = this;
+    var newPos = _.map(this.pos, function(p){
+        return p + interval * that.speed;
+    });
+    var newRect = newPos.concat(this.size);
+    if (!containsRect(this.currentTile.rect, newRect)){
+        if (this.currentTile.allows(this.direction)){
+            this.pos = newPos;
+            if (!collideRect(this.currentTile.rect, newRect)){
+                this.currentTile = this.currentTile.getNeighbor(this.direction);
+            }
+        }
+    }
+};
+
+Player.prototype.getKeyFunction = function(){
+    var that = this;
+    return function(e){
+        
+    };
+};
+
+var makeTiles = function(){
+    return [[new Tile()]];
+};
+
+var makeOpps = function(){
+};
+
+var Game = function(gameProperties){
+    this.gameProperties = gameProperties;
+};
+
+Game.prototype.initialize = function(){
+    this.tiles = makeTiles();
+    this.player = new Player(this.tiles[0][0]);
+    this.opps = makeOpps();
+};
+
+Game.prototype.getFramePos = function(){
+    return [0, 0];
+};
+
+Game.prototype.draw = function(){
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
+    
+    var framePos = this.getFramePos();
+    //_.invoke(this.tiles, 'draw', framePos);
+    this.player.draw(framePos);
+    _.invoke(this.opps, 'draw');
+};
+
+Game.prototype.update = function(interval){
+    this.player.update(interval);
+    _.invoke(this.opps, 'update', interval);
+    return true;
+};
+
+var App = function(){
+    this.gameProperties = {};
+    this.current = new Game(this.gameProperties);
+    this.current.initialize();
 };
 
 App.prototype.update = function(interval){
+    var continueObject = this.current.update(interval)
+    if (!continueObject){
+        this.current = this.gameProperties.next;
+        this.current.initialize();
+    }
     return true;
-}
+};
+
+App.prototype.draw = function(){
+    this.current.draw();
+};
 
 var getFrameFunctions = function(){
     app = new App();
-    app.initialize();
     return {
         'update': function(){
             var interval = timeFeed.getInterval();
@@ -92,20 +314,15 @@ var getFrameFunctions = function(){
 };
 
 var main = function(){
-    try{
-        var functions = getFrameFunctions();
-        var tickFun = function(){
-            var cont = functions.update();
-            functions.draw();
-            if (cont){
-                requestAnimFrame(tickFun, canvas);
-            }
-        };
-        tickFun();
-    }
-    catch(e){
-        alert(e);
-    }
+    var functions = getFrameFunctions();
+    var tickFun = function(){
+        var cont = functions.update();
+        functions.draw();
+        if (cont){
+            requestAnimFrame(tickFun, canvas);
+        }
+    };
+    tickFun();
 };
 
 window.onload = main;
