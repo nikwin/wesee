@@ -1,7 +1,8 @@
 * Make a maze
   - restrain the player movement
-* TODO The vision is limited to a section of the maze
-* Make ghosts
+* DONE The vision is limited to a section of the maze
+* DONE Make ghosts
 * DONE Create a sheep
 * TODO it jumps
 * DONE Create a player
+* TODO Sheep compass

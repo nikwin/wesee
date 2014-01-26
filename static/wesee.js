@@ -9,8 +9,8 @@ var ctx = canvas.getContext('2d');
 
 var FORCE_TICK_TIME = false;
 
-var GAMEWIDTH = width * 1.5;
-var GAMEHEIGHT = height * 1.5;
+var GAMEWIDTH = width;
+var GAMEHEIGHT = height;
 
 var max = function(a, b){return (a > b) ? a : b;};
 var min = function(a, b){return (a < b) ? a : b;};
@@ -169,16 +169,22 @@ var Player = function(startTile){
     this.direction = [1, 0];
     this.size = [16, 16];
     this.currentTile = startTile;
+    this.stopped = -1;
 };
 
 Player.prototype.speed = 60;
 
 Player.prototype.draw = function(framePos){
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = (this.stopped > 0) ? '#000000' : '#ff0000';
     ctx.fillText('P', this.pos[0] - framePos[0], this.pos[1] - framePos[1]);
 };
 
-Player.prototype.update = function(interval, sheep){
+Player.prototype.update = function(interval, sheep, opps){
+    if (this.stopped > 0){
+        this.stopped -= interval;
+        return true;
+    }
+    
     var that = this;
     var newPos = _.map(this.pos, function(p, i){
         return p + interval * that.speed * that.direction[i];
@@ -192,22 +198,42 @@ Player.prototype.update = function(interval, sheep){
             }
         }
     }
-    return collideRect(this.pos.concat(this.size), sheep.rect);
+
+    var rect = this.pos.concat(this.size);
+    if (collideRect(rect, sheep.rect)){
+        return false;
+    }
+
+    var oppCollide = _.chain(opps)
+        .filter(function(opp){ return collideRect(rect, opp.rect); })
+        .first()
+        .value();
+
+    if (oppCollide){
+        this.collided(oppCollide);
+    }
+    
+    return true;
+};
+
+Player.prototype.collided = function(opponent){
+    opponent.alive = false;
+    this.stopped = 5;
 };
 
 Player.prototype.getKeyFunction = function(){
     var that = this;
     return function(e){
-        if (e.keyCode == 87){
+        if (e.keyCode == 87 || e.keyCode == 38){
             that.direction = [0, -1];
         }
-        else if (e.keyCode == 65){
+        else if (e.keyCode == 65 || e.keyCode == 37){
             that.direction = [-1, 0];
         }
-        else if (e.keyCode == 83){
+        else if (e.keyCode == 83 || e.keyCode == 40){
             that.direction = [0, 1];
         }
-        else if (e.keyCode == 68){
+        else if (e.keyCode == 68 || e.keyCode == 39){
             that.direction = [1, 0];
         }
     };
@@ -226,11 +252,58 @@ Sheep.prototype.draw = function(framePos){
     ctx.fillText('S', this.rect[0] - framePos[0], this.rect[1] - framePos[1], this.rect[2], this.rect[3]);
 };
 
+var Opponent = function(){
+    this.rect = [Math.random() * GAMEWIDTH, Math.random() * GAMEHEIGHT, 24, 24];
+    this.aiStyle = Math.floor(Math.random() * 2);
+    this.alive = true;
+};
+
+Opponent.prototype.speed = 45;
+
+Opponent.prototype.update = function(interval, player){
+    if (player.stopped > 0){
+        return this.alive;
+    }
+    var factor;
+    var pos;
+    if (this.aiStyle == 0){
+        pos = player.pos;
+    }
+    else if (this.aiStyle == 1){
+        pos = [player.pos[0] + (player.direction[0] * player.speed * 3),
+               player.pos[1] + (player.direction[1] * player.speed * 3),]
+    }
+
+    dx = Math.abs(this.rect[0] - player.pos[0]);
+    dy = Math.abs(this.rect[1] - player.pos[1]);
+    if (dx > dy){
+        factor = (this.rect[0] > player.pos[0]) ? -1 : 1;
+        this.rect[0] += this.speed * interval * factor;
+    }
+    else{
+        factor = (this.rect[1] > player.pos[1]) ? -1 : 1;
+        this.rect[1] += this.speed * interval * factor;
+    }
+    
+    return this.alive;
+};
+
+Opponent.prototype.draw = function(framePos){
+    ctx.fillStyle = '#000000';
+    ctx.fillText('O', this.rect[0] - framePos[0], this.rect[1] - framePos[1]);
+};
+
 var makeTiles = function(){
     return [[new Tile()]];
 };
 
 var makeOpps = function(){
+    return [
+        new Opponent(),
+        new Opponent(),
+        new Opponent(),
+        new Opponent()
+    ];
 };
 
 var Game = function(gameProperties){
@@ -261,13 +334,16 @@ Game.prototype.draw = function(){
     var framePos = this.getFramePos();
     //_.invoke(this.tiles, 'draw', framePos);
     this.player.draw(framePos);
-    _.invoke(this.opps, 'draw');
+    _.invoke(this.opps, 'draw', framePos);
     this.sheep.draw(framePos);
 };
 
 Game.prototype.update = function(interval){
-    this.stillRunning = !this.player.update(interval, this.sheep);
-    _.invoke(this.opps, 'update', interval);
+    this.stillRunning = this.player.update(interval, this.sheep, this.opps);
+    var that = this;
+    this.opps = _.filter(this.opps, function(opp){
+        return opp.update(interval, that.player);
+    });
     this.sheep.update(interval);
     if (!this.stillRunning){
         this.gameProperties.next = new EndGame(this.gameProperties);
