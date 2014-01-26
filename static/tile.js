@@ -14,7 +14,6 @@ Tile.prototype.initialize = function(mazeGenerator, x, y) {
     this.x = x;
     this.y = y;
     this.walls = [true, true, true, true];
-    this.neighbors = [nil, nil, nil, nil];
 };
 
 Tile.prototype.walls = function() {
@@ -32,7 +31,18 @@ Tile.prototype.numWalls = function() {
 };
 
 Tile.prototype.allows = function(direction) {
-    return this.walls[direction];
+    if (direction[0] > 0){
+        return !this.walls[DIRECTION_RIGHT];
+    }
+    else if (direction[0] < 0){
+        return !this.walls[DIRECTION_LEFT];
+    }
+    else if (direction[1] > 0){
+        return !this.walls[DIRECTION_BOTTOM];
+    }
+    else{
+        return !this.walls[DIRECTION_TOP];
+    }
 };
 
 Tile.prototype.getNeighbor = function(direction) {
@@ -61,16 +71,9 @@ var MAX_TILES_TO_EXPAND_PER_DIRECTION = 4;
 MazeGenerator.prototype.getNeighbor = function(tile, direction) {
     var x = tile.x;
     var y = tile.y;
-    if (direction == DIRECTION_LEFT) {
-	x--;
-    } else if (direction == DIRECTION_RIGHT) {
-	x++;
-    } else if (direction == DIRECTION_TOP) {
-	y--;
-    } else if (direction == DIRECTION_BOTTOM) {
-	y++;
-    }
-
+    x += direction[0];
+    y += direction[1];
+    
     if ((x < 0) || (x >= this.tilesWidth)) {
 	return nil;
     } else if ((y < 0) || (y >= this.tilesHeight)) {

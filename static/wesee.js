@@ -15,6 +15,13 @@ var GAMEHEIGHT = height;
 var max = function(a, b){return (a > b) ? a : b;};
 var min = function(a, b){return (a < b) ? a : b;};
 
+var d2 = function(p1, p2){
+    var x, y;
+    x = p1[0] - p2[0];
+    y = p1[1] - p2[1];
+    return x*x + y*y;
+};
+
 window.requestAnimFrame = (function(){
     return  window.requestAnimationFrame   || 
 	window.webkitRequestAnimationFrame || 
@@ -144,7 +151,7 @@ var containsRect = function(outer, inner){
     return outer[0] < inner[0] &&
         outer[1] < inner[1] &&
         outer[0] + outer[2] > inner[0] + inner [2] &&
-        outer[1] + outer[3] > innter[1] + inner[3];
+        outer[1] + outer[3] > inner[1] + inner[3];
 };
 
 var collideRect = function(rct1, rct2){
@@ -152,41 +159,51 @@ var collideRect = function(rct1, rct2){
 	    max(rct1[1], rct2[1]) < min(rct1[1] + rct1[3], rct2[1] + rct2[3]));
 };
 
-var Player = function(startTile){
-    this.pos = [50, 50];
+var Player = function(startTile, game){
+    this.pos = [25, 25];
     this.direction = [1, 0];
     this.size = [16, 16];
     this.currentTile = startTile;
     this.stopped = -1;
+    this.game = game;
+    this.speedTime = 0;
 };
 
 Player.prototype.speed = 60;
 
 Player.prototype.draw = function(framePos){
     ctx.fillStyle = (this.stopped > 0) ? '#000000' : '#ff0000';
-    ctx.fillText('P', this.pos[0] - framePos[0], this.pos[1] - framePos[1]);
+    ctx.fillRect(this.pos[0] - framePos[0], this.pos[1] - framePos[1], this.size[0], this.size[1]);
 };
 
-Player.prototype.update = function(interval, sheep, opps){
+Player.prototype.update = function(interval, sheep, opps, candies){
     if (this.stopped > 0){
         this.stopped -= interval;
         return true;
     }
+
+    if (this.speedTime > 0){
+        this.speedTime -= interval;
+    }
     
     var that = this;
     var newPos = _.map(this.pos, function(p, i){
-        return p + interval * that.speed * that.direction[i];
+        return p + interval * that.speed * that.direction[i] * ((that.speedTime > 0) ? 2 : 1);
     });
     var newRect = newPos.concat(this.size);
-    if (!containsRect(this.currentTile.rect, newRect)){
+    var tileRect = [this.currentTile.x * 50, this.currentTile.y * 50, 50, 50]
+    if (!containsRect(tileRect, newRect)){
         if (this.currentTile.allows(this.direction)){
             this.pos = newPos;
-            if (!collideRect(this.currentTile.rect, newRect)){
+            if (!collideRect(tileRect, newRect)){
                 this.currentTile = this.currentTile.getNeighbor(this.direction);
             }
         }
     }
-
+    else{
+        this.pos = newPos;
+    }
+    
     var rect = this.pos.concat(this.size);
     if (collideRect(rect, sheep.rect)){
         return false;
@@ -200,13 +217,27 @@ Player.prototype.update = function(interval, sheep, opps){
     if (oppCollide){
         this.collided(oppCollide);
     }
+
+    var candyCollide = _.chain(candies)
+        .filter(function(candy){ return collideRect(rect, candy.rect); })
+        .first()
+        .value();
+
+    if (candyCollide){
+        this.collideCandy(candyCollide);
+    }
     
     return true;
 };
 
 Player.prototype.collided = function(opponent){
     opponent.alive = false;
-    this.stopped = 5;
+    this.stopped = 0.2;
+};
+
+Player.prototype.collideCandy = function(candy){
+    candy.fn(this, this.game);
+    candy.alive = false;
 };
 
 Player.prototype.getKeyFunction = function(){
@@ -244,22 +275,44 @@ var Opponent = function(){
     this.rect = [Math.random() * GAMEWIDTH, Math.random() * GAMEHEIGHT, 24, 24];
     this.aiStyle = Math.floor(Math.random() * 2);
     this.alive = true;
+    this.asleep = true;
+    this.startPos = _.first(this.rect, 2);
 };
 
 Opponent.prototype.speed = 45;
+
+Opponent.prototype.radius = 150;
+Opponent.prototype.giveUpDist = 300;
 
 Opponent.prototype.update = function(interval, player){
     if (player.stopped > 0){
         return this.alive;
     }
+
+    if (d2(this.startPos, this.rect) > this.giveUpDist * this.giveUpDist){
+        this.asleep = true;
+        this.startPos = _.first(this.rect, 2);
+    }
+    
+    if (this.asleep){
+        if (d2(player.pos, this.rect) < this.radius * this.radius){
+            this.asleep = false;
+        }
+        else{
+            return this.alive;
+        }
+    }
+
+    
+    
     var factor;
     var pos;
-    if (this.aiStyle == 0){
+    if (this.aiStyle === 0){
         pos = player.pos;
     }
     else if (this.aiStyle == 1){
         pos = [player.pos[0] + (player.direction[0] * player.speed * 3),
-               player.pos[1] + (player.direction[1] * player.speed * 3),]
+               player.pos[1] + (player.direction[1] * player.speed * 3)];
     }
 
     dx = Math.abs(this.rect[0] - player.pos[0]);
@@ -279,33 +332,42 @@ Opponent.prototype.update = function(interval, player){
 Opponent.prototype.draw = function(framePos){
     ctx.fillStyle = '#000000';
     ctx.fillText('O', this.rect[0] - framePos[0], this.rect[1] - framePos[1]);
+    if (this.asleep){
+        ctx.strokeStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(this.rect[0] - framePos[0], this.rect[1] - framePos[1], this.radius, 0, 2 * Math.PI, false);
+        ctx.stroke();
+    }
 };
 
-var FakeTile = function(){
-    this.rect = [0, 0, 0, 0];
+var Candy = function(){
+    this.rect = [Math.random() * GAMEWIDTH, Math.random() * GAMEHEIGHT, 24, 24];
+    this.alive = true;
+    this.fn = _.sample([
+        function(player, game){
+            player.speedTime += 5;
+        },
+        function(player, game){
+            _.each(game.opps, function(opp){
+                opp.asleep = false;
+            })
+        }
+    ])
 };
 
-FakeTile.prototype.allows = function(direction){
-    return true;
+Candy.prototype.draw = function(framePos){
+    ctx.fillStyle = '#0000ff';
+    ctx.fillRect(this.rect[0] - framePos[0], this.rect[1] - framePos[1], this.rect[2], this.rect[3]);
 };
 
-FakeTile.prototype.getNeighbor = function(direction){
-    return this;
-};
-
-
-
-var makeTiles = function(){
-    return [[new FakeTile()]];
+Candy.prototype.update = function(interval){
+    return this.alive;
 };
 
 var makeOpps = function(){
-    return [
-        new Opponent(),
-        new Opponent(),
-        new Opponent(),
-        new Opponent()
-    ];
+    return _.map(_.range(12), function(){
+        return new Opponent();
+    });
 };
 
 var Game = function(gameProperties){
@@ -314,13 +376,16 @@ var Game = function(gameProperties){
 
 Game.prototype.initialize = function(){
     this.mazeGenerator = new MazeGenerator();
-    this.mazeGenerator.generateMaze(10, 10);
-    this.tiles = makeTiles();
-    this.player = new Player(this.tiles[0][0]);
+    this.mazeGenerator.generateMaze(30, 18);
+    this.tiles = this.mazeGenerator.tiles;
+    this.player = new Player(this.tiles[0][0], this);
     bindHandler.bindFunction(this.player.getKeyFunction());
     this.opps = makeOpps();
     this.sheep = new Sheep();
     this.stillRunning = true;
+    this.candies = _.map(_.range(8), function(){
+        return new Candy();
+    });
 };
 
 Game.prototype.getFramePos = function(){
@@ -343,7 +408,7 @@ Game.prototype.draw = function(){
     ctx.fillStyle = '#000000';
     for (var i = 0; i < this.mazeGenerator.tilesHeight; i++){
         for (var j = 0; j < this.mazeGenerator.tilesWidth; j++){
-            var tile = this.mazeGenerator.tiles[i][j];
+            var tile = this.mazeGenerator.tiles[j][i];
             var pos = [j * 50 - framePos[0], i * 50 - framePos[1]];
             if (tile.walls[DIRECTION_TOP]){
                 ctx.fillRect(pos[0], pos[1], 50, 5);
@@ -353,10 +418,12 @@ Game.prototype.draw = function(){
             }
         }
     }
+
+    _.invoke(this.candies, 'draw', framePos);
 };
 
 Game.prototype.update = function(interval){
-    this.stillRunning = this.player.update(interval, this.sheep, this.opps);
+    this.stillRunning = this.player.update(interval, this.sheep, this.opps, this.candies);
     var that = this;
     this.opps = _.filter(this.opps, function(opp){
         return opp.update(interval, that.player);
@@ -365,6 +432,9 @@ Game.prototype.update = function(interval){
     if (!this.stillRunning){
         this.gameProperties.next = new EndGame(this.gameProperties);
     }
+
+    this.candies = _.where(this.candies, {alive: true});
+
     return this.stillRunning;
 };
 
