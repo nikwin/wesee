@@ -1,3 +1,5 @@
+/*jshint -W099*/
+
 var DIRECTION_LEFT = 0;
 var DIRECTION_RIGHT = 1;
 var DIRECTION_TOP = 2;
@@ -82,15 +84,16 @@ MazeGenerator.prototype.generateMaze = function(width, height) {
     this.tilesWidth = width;
     this.tilesHeight = height;
     this.tiles = [];
+    var tile;
     var tilesToExpand = [];
     for (var x = 0; x < width; ++x) {
 	var tileColumn = [];
 	this.tiles.push(tileColumn);
 	for (var y = 0; y < height; ++y) {
-	    var tile = new Tile();
+	    tile = new Tile();
 	    tile.initialize(this, x, y);
 	    tileColumn.push(tile);
-	    if ((x == 0) || (x == width - 1)) {
+	    if ((x === 0) || (x == width - 1)) {
 		if (y > 0) {
 		    tile.walls[DIRECTION_TOP] = false;
 		}
@@ -99,7 +102,7 @@ MazeGenerator.prototype.generateMaze = function(width, height) {
 		}
 	    }
 
-	    if ((y == 0) || (y == height - 1)) {
+	    if ((y === 0) || (y == height - 1)) {
 		if (x > 0) {
 		    tile.walls[DIRECTION_LEFT] = false;
 		}

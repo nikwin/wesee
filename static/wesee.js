@@ -152,18 +152,6 @@ var collideRect = function(rct1, rct2){
 	    max(rct1[1], rct2[1]) < min(rct1[1] + rct1[3], rct2[1] + rct2[3]));
 };
 
-var Tile = function(){
-    this.rect = [0, 0, 0, 0];
-};
-
-Tile.prototype.allows = function(direction){
-    return true;
-};
-
-Tile.prototype.getNeighbor = function(direction){
-    return this;
-};
-
 var Player = function(startTile){
     this.pos = [50, 50];
     this.direction = [1, 0];
@@ -293,8 +281,22 @@ Opponent.prototype.draw = function(framePos){
     ctx.fillText('O', this.rect[0] - framePos[0], this.rect[1] - framePos[1]);
 };
 
+var FakeTile = function(){
+    this.rect = [0, 0, 0, 0];
+};
+
+FakeTile.prototype.allows = function(direction){
+    return true;
+};
+
+FakeTile.prototype.getNeighbor = function(direction){
+    return this;
+};
+
+
+
 var makeTiles = function(){
-    return [[new Tile()]];
+    return [[new FakeTile()]];
 };
 
 var makeOpps = function(){
@@ -311,6 +313,8 @@ var Game = function(gameProperties){
 };
 
 Game.prototype.initialize = function(){
+    this.mazeGenerator = new MazeGenerator();
+    this.mazeGenerator.generateMaze(10, 10);
     this.tiles = makeTiles();
     this.player = new Player(this.tiles[0][0]);
     bindHandler.bindFunction(this.player.getKeyFunction());
@@ -336,6 +340,19 @@ Game.prototype.draw = function(){
     this.player.draw(framePos);
     _.invoke(this.opps, 'draw', framePos);
     this.sheep.draw(framePos);
+    ctx.fillStyle = '#000000';
+    for (var i = 0; i < this.mazeGenerator.tilesHeight; i++){
+        for (var j = 0; j < this.mazeGenerator.tilesWidth; j++){
+            var tile = this.mazeGenerator.tiles[i][j];
+            var pos = [j * 50 - framePos[0], i * 50 - framePos[1]];
+            if (tile.walls[DIRECTION_TOP]){
+                ctx.fillRect(pos[0], pos[1], 50, 5);
+            }
+            if (tile.walls[DIRECTION_LEFT]){
+                ctx.fillRect(pos[0], pos[1], 5, 50);
+            }
+        }
+    }
 };
 
 Game.prototype.update = function(interval){
@@ -400,10 +417,6 @@ var getFrameFunctions = function(){
 };
 
 var main = function(){
-    var mazeGenerator = new MazeGenerator();
-    mazeGenerator.generateMaze(10, 10);
-    //mazeGenerator.print();
-
     var functions = getFrameFunctions();
     var tickFun = function(){
         var cont = functions.update();
