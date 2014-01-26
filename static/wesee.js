@@ -176,7 +176,11 @@ Player.prototype.draw = function(framePos){
     ctx.fillRect(this.pos[0] - framePos[0], this.pos[1] - framePos[1], this.size[0], this.size[1]);
 };
 
-Player.prototype.update = function(interval, sheep, opps, candies){
+Player.prototype.update = function(interval, game){
+    var sheep = game.sheep;
+    var opps = game.opps;
+    var candies = game.candies;
+    var goals = game.goals;
     if (this.stopped > 0){
         this.stopped -= interval;
         return true;
@@ -209,22 +213,29 @@ Player.prototype.update = function(interval, sheep, opps, candies){
         return false;
     }
 
-    var oppCollide = _.chain(opps)
-        .filter(function(opp){ return collideRect(rect, opp.rect); })
-        .first()
-        .value();
+    var getCollision = function(lst){
+        return _.chain(lst)
+            .filter(function(piece){ return collideRect(rect, piece.rect); })
+            .first()
+            .value();
+    };
+    
+    var oppCollide = getCollision(opps);
 
     if (oppCollide){
         this.collided(oppCollide);
     }
 
-    var candyCollide = _.chain(candies)
-        .filter(function(candy){ return collideRect(rect, candy.rect); })
-        .first()
-        .value();
+    var candyCollide = getCollision(candies);
 
     if (candyCollide){
         this.collideCandy(candyCollide);
+    }
+
+    var goalCollide = getCollision(goals);
+
+    if (goalCollide){
+        goalCollide.alive = false;
     }
     
     return true;
@@ -267,8 +278,8 @@ Sheep.prototype.update = function(interval){
 };
 
 Sheep.prototype.draw = function(framePos){
-    ctx.fillStyle = '#000000';
-    ctx.fillText('S', this.rect[0] - framePos[0], this.rect[1] - framePos[1], this.rect[2], this.rect[3]);
+    ctx.fillStyle = '#ffff00';
+    ctx.fillRect(this.rect[0] - framePos[0], this.rect[1] - framePos[1], this.rect[2], this.rect[3]);
 };
 
 var Opponent = function(){
@@ -302,8 +313,6 @@ Opponent.prototype.update = function(interval, player){
             return this.alive;
         }
     }
-
-    
     
     var factor;
     var pos;
@@ -344,15 +353,15 @@ var Candy = function(){
     this.rect = [Math.random() * GAMEWIDTH, Math.random() * GAMEHEIGHT, 24, 24];
     this.alive = true;
     this.fn = _.sample([
-        function(player, game){
+        function(player){
             player.speedTime += 5;
         },
         function(player, game){
             _.each(game.opps, function(opp){
                 opp.asleep = false;
-            })
+            });
         }
-    ])
+    ]);
 };
 
 Candy.prototype.draw = function(framePos){
@@ -362,6 +371,20 @@ Candy.prototype.draw = function(framePos){
 
 Candy.prototype.update = function(interval){
     return this.alive;
+};
+
+var Goal = function(){
+    this.rect = [Math.random() * GAMEWIDTH, Math.random() * GAMEHEIGHT, 24, 24];
+    this.alive = true;
+};
+
+Goal.prototype.update = function(interval){
+    return this.alive;
+};
+
+Goal.prototype.draw = function(framePos){
+    ctx.fillStyle = '#00ffff';
+    ctx.fillRect(this.rect[0] - framePos[0], this.rect[1] - framePos[1], this.rect[2], this.rect[3]);
 };
 
 var makeOpps = function(){
@@ -385,6 +408,9 @@ Game.prototype.initialize = function(){
     this.stillRunning = true;
     this.candies = _.map(_.range(8), function(){
         return new Candy();
+    });
+    this.goals = _.map(_.range(8), function(){
+        return new Goal();
     });
 };
 
@@ -420,10 +446,11 @@ Game.prototype.draw = function(){
     }
 
     _.invoke(this.candies, 'draw', framePos);
+    _.invoke(this.goals, 'draw', framePos);
 };
 
 Game.prototype.update = function(interval){
-    this.stillRunning = this.player.update(interval, this.sheep, this.opps, this.candies);
+    this.stillRunning = this.player.update(interval, this);
     var that = this;
     this.opps = _.filter(this.opps, function(opp){
         return opp.update(interval, that.player);
@@ -434,6 +461,7 @@ Game.prototype.update = function(interval){
     }
 
     this.candies = _.where(this.candies, {alive: true});
+    this.goals = _.where(this.goals, {alive: true});
 
     return this.stillRunning;
 };
