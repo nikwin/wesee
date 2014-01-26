@@ -400,6 +400,10 @@ var getFrameFunctions = function(){
 };
 
 var main = function(){
+    var mazeGenerator = new MazeGenerator();
+    mazeGenerator.generateMaze(10, 10);
+    //mazeGenerator.print();
+
     var functions = getFrameFunctions();
     var tickFun = function(){
         var cont = functions.update();
