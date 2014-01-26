@@ -7,15 +7,17 @@ var NUM_DIRECTIONS = 4;
 var Tile = function(){
 };
 
-Tile.prototype.initialize = function(x, y) {
+Tile.prototype.initialize = function(mazeGenerator, x, y) {
+    this.mazeGenerator = mazeGenerator;
     this.x = x;
     this.y = y;
     this.walls = [true, true, true, true];
+    this.neighbors = [nil, nil, nil, nil];
 };
 
 Tile.prototype.walls = function() {
     return this.walls;
-}
+};
 
 Tile.prototype.numWalls = function() {
     var numWalls = 0;
@@ -25,7 +27,15 @@ Tile.prototype.numWalls = function() {
 	}
     }
     return numWalls;
-}
+};
+
+Tile.prototype.allows = function(direction) {
+    return this.walls[direction];
+};
+
+Tile.prototype.getNeighbor = function(direction) {
+    return this.mazeGenerator.getNeighbor(this, direction);
+};
 
 var MazeGenerator = function() {
 };
@@ -46,6 +56,28 @@ MazeGenerator.prototype.randomWalledDirectionForTile = function(tile) {
 var MIN_TILES_TO_EXPAND_PER_DIRECTION = 2;
 var MAX_TILES_TO_EXPAND_PER_DIRECTION = 4;
 
+MazeGenerator.prototype.getNeighbor = function(tile, direction) {
+    var x = tile.x;
+    var y = tile.y;
+    if (direction == DIRECTION_LEFT) {
+	x--;
+    } else if (direction == DIRECTION_RIGHT) {
+	x++;
+    } else if (direction == DIRECTION_TOP) {
+	y--;
+    } else if (direction == DIRECTION_BOTTOM) {
+	y++;
+    }
+
+    if ((x < 0) || (x >= this.tilesWidth)) {
+	return nil;
+    } else if ((y < 0) || (y >= this.tilesHeight)) {
+	return nil;
+    } else {
+	return this.tiles[x][y];
+    }
+}
+
 MazeGenerator.prototype.generateMaze = function(width, height) {
     this.tilesWidth = width;
     this.tilesHeight = height;
@@ -56,7 +88,7 @@ MazeGenerator.prototype.generateMaze = function(width, height) {
 	this.tiles.push(tileColumn);
 	for (var y = 0; y < height; ++y) {
 	    var tile = new Tile();
-	    tile.initialize(x, y);
+	    tile.initialize(this, x, y);
 	    tileColumn.push(tile);
 	    if ((x == 0) || (x == width - 1)) {
 		if (y > 0) {
