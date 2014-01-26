@@ -9,6 +9,9 @@ var ctx = canvas.getContext('2d');
 
 var FORCE_TICK_TIME = false;
 
+var GAMEWIDTH = width * 4;
+var GAMEHEIGHT = height * 4;
+
 var max = function(a, b){return (a > b) ? a : b;};
 var min = function(a, b){return (a < b) ? a : b;};
 
@@ -30,19 +33,12 @@ var bindHandler = (function(){
     FunctionGroup.prototype.clear = function(){
 	var oldSet = {
 	    functions: this.functions,
-	    flipped: this.flipped
 	};
-	this.functions = {'down': [],
-			  'up': [],
-			  'move': []};
-	this.flipped = {'down': [],
-			'up': [],
-			'move': []};
+	this.functions = {'keydown': []};
 	return oldSet;
     };
     FunctionGroup.prototype.reset = function(oldSet){
 	this.functions = oldSet.functions;
-	this.flipped = oldSet.flipped;
     };
     FunctionGroup.prototype.run = function(key, e){
 	var anyTrue = false;
@@ -53,15 +49,7 @@ var bindHandler = (function(){
 	}
 	return anyTrue;
     };
-    FunctionGroup.prototype.flip = function(functionDict){
-	if (functionDict === undefined){
-	    this.functions = this.flipped;
-	}
-	else{
-	    this.flipped = this.functions;
-	    this.functions = functionDict;
-	}
-    };
+    
     FunctionGroup.prototype.addFunction = function(func, event){
 	this.functions[event].push(func);
 	var that = this;
@@ -76,55 +64,24 @@ var bindHandler = (function(){
     };
 
     var alwaysFunctions = new FunctionGroup();
-    var ifNothingFunctions = new FunctionGroup();
-
-    var functionGroups = [alwaysFunctions, ifNothingFunctions];
+    
+    var functionGroups = [alwaysFunctions];
     
     var getBindFunction = function(key){
 	return function(e){
-	    e.preventDefault();
-	    var runNothingFunctions = !alwaysFunctions.run(key, e);
-	    if (runNothingFunctions){
-		ifNothingFunctions.run(key, e);
-	    }
+	    alwaysFunctions.run(key, e);
 	};
     };
 
-    canvas.addEventListener('mousedown', getBindFunction('down'), false);
-    canvas.addEventListener('mouseup', getBindFunction('up'), false);
-    canvas.addEventListener('mousemove', getBindFunction('move'), false);
-    canvas.addEventListener('touchstart', getBindFunction('down'), false);
-    canvas.addEventListener('touchend', getBindFunction('up'), false);
-    canvas.addEventListener('touchmove', getBindFunction('move'), false);
-
+    window.addEventListener('keydown', getBindFunction('keydown'), false);
+    
     return {
-	flip: function(functionDicts){
-	    for (var i = 0; i < functionGroups.length; i++){
-		if (functionDicts === undefined){
-		    functionGroups[i].flip();
-		}
-		else{
-		    if (functionDicts[i] === undefined){
-			console.log('Warning: undefined function flip');
-		    }
-		    functionGroups[i].flip(functionDicts[i]);
-		}
-	    }
-	},
-	bindFunction: function(func, event, group){
-	    if (!event){
-		event = 'down';
+	bindFunction: function(func, event){
+	    if (event === undefined){
+		event = 'keydown';
 	    }
 
-	    if (group === undefined || group == 'always'){
-		return alwaysFunctions.addFunction(func, event);
-	    }
-	    else if (group == 'ifnothing'){
-		return ifNothingFunctions.addFunction(func, event);
-	    }
-	    else{
-		console.log('Warning: wrong bind group' + func);
-	    }
+	    return alwaysFunctions.addFunction(func, event);
 	},
 	clear: function(){
 	    var oldSets = [];
@@ -221,10 +178,10 @@ Player.prototype.draw = function(framePos){
     ctx.fillText('P', this.pos[0] - framePos[0], this.pos[1] - framePos[1]);
 };
 
-Player.prototype.update = function(interval){
+Player.prototype.update = function(interval, sheep){
     var that = this;
-    var newPos = _.map(this.pos, function(p){
-        return p + interval * that.speed;
+    var newPos = _.map(this.pos, function(p, i){
+        return p + interval * that.speed * that.direction[i];
     });
     var newRect = newPos.concat(this.size);
     if (!containsRect(this.currentTile.rect, newRect)){
@@ -235,13 +192,37 @@ Player.prototype.update = function(interval){
             }
         }
     }
+    return collideRect(this.pos.concat(this.size), sheep.rect);
 };
 
 Player.prototype.getKeyFunction = function(){
     var that = this;
     return function(e){
-        
+        if (e.keyCode == 87){
+            that.direction = [0, -1];
+        }
+        else if (e.keyCode == 65){
+            that.direction = [-1, 0];
+        }
+        else if (e.keyCode == 83){
+            that.direction = [0, 1];
+        }
+        else if (e.keyCode == 68){
+            that.direction = [1, 0];
+        }
     };
+};
+
+var Sheep = function(){
+    this.rect = [100, 50, 24, 24];
+};
+
+Sheep.prototype.update = function(interval){
+};
+
+Sheep.prototype.draw = function(framePos){
+    ctx.fillStyle = '#000000';
+    ctx.fillText('S', this.rect[0] - framePos[0], this.rect[1] - framePos[1], this.rect[2], this.rect[3]);
 };
 
 var makeTiles = function(){
@@ -258,7 +239,10 @@ var Game = function(gameProperties){
 Game.prototype.initialize = function(){
     this.tiles = makeTiles();
     this.player = new Player(this.tiles[0][0]);
+    bindHandler.bindFunction(this.player.getKeyFunction());
     this.opps = makeOpps();
+    this.sheep = new Sheep();
+    this.stillRunning = true;
 };
 
 Game.prototype.getFramePos = function(){
@@ -273,12 +257,33 @@ Game.prototype.draw = function(){
     //_.invoke(this.tiles, 'draw', framePos);
     this.player.draw(framePos);
     _.invoke(this.opps, 'draw');
+    this.sheep.draw(framePos);
 };
 
 Game.prototype.update = function(interval){
-    this.player.update(interval);
+    this.stillRunning = !this.player.update(interval, this.sheep);
     _.invoke(this.opps, 'update', interval);
+    this.sheep.update(interval);
+    if (!this.stillRunning){
+        this.gameProperties.next = new EndGame(this.gameProperties);
+    }
+    return this.stillRunning;
+};
+
+var EndGame = function(gameProperties){
+    this.gameProperties = gameProperties;
+};
+
+EndGame.prototype.draw = function(){
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(0, 0, width, height);
+};
+
+EndGame.prototype.update = function(){
     return true;
+};
+
+EndGame.prototype.initialize = function(){
 };
 
 var App = function(){
@@ -288,7 +293,7 @@ var App = function(){
 };
 
 App.prototype.update = function(interval){
-    var continueObject = this.current.update(interval)
+    var continueObject = this.current.update(interval);
     if (!continueObject){
         this.current = this.gameProperties.next;
         this.current.initialize();
