@@ -11,6 +11,7 @@ var FORCE_TICK_TIME = false;
 
 var GAMEWIDTH = width;
 var GAMEHEIGHT = height;
+var GOAL_NUMBER = 8;
 
 var max = function(a, b){return (a > b) ? a : b;};
 var min = function(a, b){return (a < b) ? a : b;};
@@ -159,6 +160,14 @@ var collideRect = function(rct1, rct2){
 	    max(rct1[1], rct2[1]) < min(rct1[1] + rct1[3], rct2[1] + rct2[3]));
 };
 
+var getGoodWord = function(){
+    return 'good';
+};
+
+var getBadWord = function(){
+    return 'bad';
+};
+
 var Player = function(startTile, game){
     this.pos = [25, 25];
     this.direction = [1, 0];
@@ -177,7 +186,6 @@ Player.prototype.draw = function(framePos){
 };
 
 Player.prototype.update = function(interval, game){
-    var sheep = game.sheep;
     var opps = game.opps;
     var candies = game.candies;
     var goals = game.goals;
@@ -209,10 +217,7 @@ Player.prototype.update = function(interval, game){
     }
     
     var rect = this.pos.concat(this.size);
-    if (collideRect(rect, sheep.rect)){
-        return false;
-    }
-
+    
     var getCollision = function(lst){
         return _.chain(lst)
             .filter(function(piece){ return collideRect(rect, piece.rect); })
@@ -235,7 +240,7 @@ Player.prototype.update = function(interval, game){
     var goalCollide = getCollision(goals);
 
     if (goalCollide){
-        goalCollide.alive = false;
+        this.collideGoal(goalCollide);
     }
     
     return true;
@@ -244,11 +249,21 @@ Player.prototype.update = function(interval, game){
 Player.prototype.collided = function(opponent){
     opponent.alive = false;
     this.stopped = 0.2;
+    var words = this.game.gameProperties.words;
+    if (words.length > 0 && words[words.length - 1] == 'good'){
+        words.splice(words.length - 1, 1);
+        words.push(getBadWord());
+    }
 };
 
 Player.prototype.collideCandy = function(candy){
     candy.fn(this, this.game);
     candy.alive = false;
+};
+
+Player.prototype.collideGoal = function(goal){
+    goal.alive = false;
+    this.game.gameProperties.words.push(getGoodWord());
 };
 
 Player.prototype.getKeyFunction = function(){
@@ -393,6 +408,21 @@ var makeOpps = function(){
     });
 };
 
+var HUD = function(){
+    
+};
+
+HUD.prototype.draw = function(goalsLeft, words){
+    var barWidth = 60;
+    var barHeight = 5;
+    for (var i = 0; i < words.length; i++){
+        ctx.fillStyle = (words[i] == 'good') ? '#0000ff' : '#ff0000';
+        ctx.fillRect(i * barWidth + 260, 20, barWidth, barHeight);
+    }
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(words.length * barWidth + 260, 20, barWidth * goalsLeft, barHeight);
+};
+
 var Game = function(gameProperties){
     this.gameProperties = gameProperties;
 };
@@ -404,14 +434,14 @@ Game.prototype.initialize = function(){
     this.player = new Player(this.tiles[0][0], this);
     bindHandler.bindFunction(this.player.getKeyFunction());
     this.opps = makeOpps();
-    this.sheep = new Sheep();
     this.stillRunning = true;
     this.candies = _.map(_.range(8), function(){
         return new Candy();
     });
-    this.goals = _.map(_.range(8), function(){
+    this.goals = _.map(_.range(GOAL_NUMBER), function(){
         return new Goal();
     });
+    this.hud = new HUD();
 };
 
 Game.prototype.getFramePos = function(){
@@ -427,10 +457,8 @@ Game.prototype.draw = function(){
     ctx.fillRect(0, 0, width, height);
     
     var framePos = this.getFramePos();
-    //_.invoke(this.tiles, 'draw', framePos);
     this.player.draw(framePos);
     _.invoke(this.opps, 'draw', framePos);
-    this.sheep.draw(framePos);
     ctx.fillStyle = '#000000';
     for (var i = 0; i < this.mazeGenerator.tilesHeight; i++){
         for (var j = 0; j < this.mazeGenerator.tilesWidth; j++){
@@ -442,11 +470,18 @@ Game.prototype.draw = function(){
             if (tile.walls[DIRECTION_LEFT]){
                 ctx.fillRect(pos[0], pos[1], 5, 50);
             }
+            if (i == this.mazeGenerator.tilesHeight - 1 && tile.walls[DIRECTION_BOTTOM]){
+                ctx.fillRect(pos[0], pos[1] + 45, 50, 5);
+            }
+            if (j == this.mazeGenerator.tilesWidth - 1 && tile.walls[DIRECTION_RIGHT]){
+                ctx.fillRect(pos[0] + 45, pos[1], 5, 50);
+            }
         }
     }
 
     _.invoke(this.candies, 'draw', framePos);
     _.invoke(this.goals, 'draw', framePos);
+    this.hud.draw(this.goals.length, this.gameProperties.words);
 };
 
 Game.prototype.update = function(interval){
@@ -455,13 +490,15 @@ Game.prototype.update = function(interval){
     this.opps = _.filter(this.opps, function(opp){
         return opp.update(interval, that.player);
     });
-    this.sheep.update(interval);
-    if (!this.stillRunning){
-        this.gameProperties.next = new EndGame(this.gameProperties);
-    }
 
     this.candies = _.where(this.candies, {alive: true});
     this.goals = _.where(this.goals, {alive: true});
+
+    this.stillRunning = this.goals.length > 0;
+    
+    if (!this.stillRunning){
+        this.gameProperties.next = new EndGame(this.gameProperties);
+    }
 
     return this.stillRunning;
 };
@@ -483,7 +520,9 @@ EndGame.prototype.initialize = function(){
 };
 
 var App = function(){
-    this.gameProperties = {};
+    this.gameProperties = {
+        words: []
+    };
     this.current = new Game(this.gameProperties);
     this.current.initialize();
 };
