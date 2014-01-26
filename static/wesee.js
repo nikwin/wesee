@@ -9,8 +9,8 @@ var ctx = canvas.getContext('2d');
 
 var FORCE_TICK_TIME = false;
 
-var GAMEWIDTH = width * 4;
-var GAMEHEIGHT = height * 4;
+var GAMEWIDTH = width * 1.5;
+var GAMEHEIGHT = height * 1.5;
 
 var max = function(a, b){return (a > b) ? a : b;};
 var min = function(a, b){return (a < b) ? a : b;};
@@ -214,10 +214,11 @@ Player.prototype.getKeyFunction = function(){
 };
 
 var Sheep = function(){
-    this.rect = [100, 50, 24, 24];
+    this.rect = [GAMEWIDTH - 50, GAMEHEIGHT - 50, 24, 24];//[100, 50, 24, 24];
 };
 
 Sheep.prototype.update = function(interval){
+    return true;
 };
 
 Sheep.prototype.draw = function(framePos){
@@ -246,7 +247,11 @@ Game.prototype.initialize = function(){
 };
 
 Game.prototype.getFramePos = function(){
-    return [0, 0];
+    var x = max(this.player.pos[0] - width / 2, 0);
+    var y = max(this.player.pos[1] - height / 2, 0);
+    x = min(x, GAMEWIDTH - width / 2);
+    y = min(y, GAMEHEIGHT - height / 2);
+    return [x, y];
 };
 
 Game.prototype.draw = function(){
